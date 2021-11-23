@@ -2,6 +2,10 @@ import torch
 import torch.nn.functional as F
 
 
+DEFAULT_EOT_SAMPLES = 16
+DEFAULT_WT_SAMPLES = 16
+DEFAULT_WT_STD = 0.045
+
 def wtpgd(
     model,
     data,
@@ -11,10 +15,25 @@ def wtpgd(
     a=0.01,
     d_min=0.,
     d_max=1.,
-    num_eot_samples=16,
-    num_wt_samples=16,
-    wt_std=0.045,
+    num_eot_samples=DEFAULT_EOT_SAMPLES,
+    num_wt_samples=DEFAULT_WT_SAMPLES,
+    wt_std=DEFAULT_WT_STD,
 ):
+    """
+    Params:
+        model: The model under attack.
+        data: A batch of images.
+        target: The class labels of the images.
+        epsilon: The PGD attack strength.
+        k: Number of PGD iterations.
+        a: PGD step size (learning rate).
+        d_min, d_max: Upper and lower pixel values for images (usually normalised
+            in [0, 1]).
+        num_eot_samples: Number of EoT samples to deal with stochastic gradients.
+            Only meaningful with stochastic defences, use 1 otherwise.
+        num_wt_samples: Number of images to sample for the Weierstrass transform.
+        wt_std: The standard deviation of the Weierstrass transform sampling method.
+    """
     model.eval()
     perturbed_data = data.clone()
     perturbed_data.requires_grad = True
