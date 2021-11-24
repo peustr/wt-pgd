@@ -6,6 +6,7 @@ DEFAULT_EOT_SAMPLES = 16
 DEFAULT_WT_SAMPLES = 16
 DEFAULT_WT_STD = 0.045
 
+
 def wtpgd(
     model,
     data,
@@ -41,6 +42,13 @@ def wtpgd(
     data_max = data + epsilon
     data_min.clamp_(d_min, d_max)
     data_max.clamp_(d_min, d_max)
+    with torch.no_grad():
+        perturbed_data.data = data + torch.empty(
+            perturbed_data.shape,
+            dtype=perturbed_data.dtype,
+            device=perturbed_data.device
+        ).uniform_(-epsilon, epsilon)
+        perturbed_data.data.clamp_(d_min, d_max)
     for pgd_iter in range(k):
         wt_grad_samples = []
         for wt_iter in range(num_wt_samples):
