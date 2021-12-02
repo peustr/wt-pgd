@@ -14,6 +14,7 @@ def get_loss_landscape(
     num_eot_samples=DEFAULT_EOT_SAMPLES,
     use_wtpgd=False,
     wtpgd_args=None,
+    gradient_axes=None,
 ):
     """
     Params:
@@ -27,26 +28,32 @@ def get_loss_landscape(
         use_wtpgd: Get the loss landscape when under attack by WTPGD.
         wtpgd_args: Arguments for WTPGD, if use_wtpgd is True. Pass them in a dictionary
             format like: {num_eot_samples=?, num_wt_samples=?, wt_std=?}.
+        gradient_axes: A tuple of (g1, g2), where g1 and g2 are orthogonal, to project the
+            loss. Seeding the axes this way is helpful when we want to visualise the loss
+            surface of the target model on the gradient axes of the original model.
     """
-    data.requires_grad = True
-    eot_grad_samples = []
-    for eot_iter in range(num_eot_samples):
-        if data.grad is not None:
-            data.grad.data.zero_()
-        logits = model(data)
-        loss = F.cross_entropy(logits, target)
-        loss.backward()
-        eot_grad_samples.append(data.grad.data.clone())
-    data.requires_grad = False
-    eot_grad = torch.stack(eot_grad_samples).mean(0)
-    g1 = eot_grad.reshape(1 * 3 * 32 * 32)
-    g1 = g1 / g1.norm()
-    g1 = g1.to(data.device)
-    # compute an orthogonal axis
-    g2 = g1.clone()
-    g2[-1] = -(g1[:-1] @ g1[:-1]) / g1[-1]
-    g2 = g2 / g2.norm()
-    g2 = g2.to(data.device)
+    if gradient_axes is None:
+        data.requires_grad = True
+        eot_grad_samples = []
+        for eot_iter in range(num_eot_samples):
+            if data.grad is not None:
+                data.grad.data.zero_()
+            logits = model(data)
+            loss = F.cross_entropy(logits, target)
+            loss.backward()
+            eot_grad_samples.append(data.grad.data.clone())
+        data.requires_grad = False
+        eot_grad = torch.stack(eot_grad_samples).mean(0)
+        g1 = eot_grad.reshape(1 * 3 * 32 * 32)
+        g1 = g1 / g1.norm()
+        g1 = g1.to(data.device)
+        # compute an orthogonal axis
+        g2 = g1.clone()
+        g2[-1] = -(g1[:-1] @ g1[:-1]) / g1[-1]
+        g2 = g2 / g2.norm()
+        g2 = g2.to(data.device)
+    else:
+        g1, g2 = gradient_axes
     x, y, z = [], [], []
     epsilons = np.linspace(-epsilon, epsilon, num_epsilons)
     for e1 in epsilons:
