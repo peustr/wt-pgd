@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from wtpgd.attack import DEFAULT_EOT_SAMPLES, DEFAULT_WT_SAMPLES, DEFAULT_WT_STD, wtpgd
+from wtpgd.attacks import DEFAULT_EOT_SAMPLES, DEFAULT_WT_SAMPLES, DEFAULT_WT_STD, wtpgd
 
 
 def get_loss_landscape(
