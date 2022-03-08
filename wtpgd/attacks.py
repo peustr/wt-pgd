@@ -108,13 +108,13 @@ def wtzoo(
         num_wt_samples: Number of images to sample for the Weierstrass transform.
         wt_std: The standard deviation of the Weierstrass transform sampling method.
     """
-    def hinge_loss(model, data, target, kappa=0.):
+    def hinge_loss(model, data, target):
+        """ Eq. 5 in original ZOO paper, with kappa=0. """
         posterior = model(data).softmax(-1)
         return (
-            posterior.softmax(-1).log() -
             posterior.softmax(-1).log().gather(1, target.view(-1, 1)) -
-            kappa
-        ).max(-1).values
+            posterior.softmax(-1).log().max(-1).values[:, None]
+        )
 
     model.eval()
     perturbed_data = data.clone()
@@ -135,15 +135,15 @@ def wtzoo(
             ) * wt_std
             eot_delta_samples = []
             for eot_iter in range(num_eot_samples):
-                l1 = hinge_loss(model, u + c * e, target, kappa=kappa)
-                l2 = hinge_loss(model, u, target, kappa=kappa)
-                l3 = hinge_loss(model, u - c * e, target, kappa=kappa)
-                g = (l1 - l3) / 2 * c
-                h = (l1 - 2 * l2 + l3) / c ** 2
-                assert g.shape == h.shape
-                delta = torch.zeros_like(g)
-                delta[h <= 0.] = -step_size * g[h <= 0.]
-                delta[h > 0] = -step_size * (g[h > 0.] / h[h > 0.])
+                f1 = hinge_loss(model, u + c * e, target, kappa=kappa)
+                f2 = hinge_loss(model, u, target, kappa=kappa)
+                f3 = hinge_loss(model, u - c * e, target, kappa=kappa)
+                grad = (f1 - f3) / 2 * c  # Eq. 6 in original ZOO paper.
+                hess = (f1 - 2 * f2 + f3) / c ** 2  # Eq. 7 in original ZOO paper.
+                assert grad.shape == hess.shape
+                delta = torch.zeros_like(grad)
+                delta[hess <= 0.] = -step_size * grad[hess <= 0.]
+                delta[hess > 0] = -step_size * (grad[hess > 0.] / hess[hess > 0.])
                 eot_delta_samples.append(delta.clone())
             wt_delta_samples.append(torch.stack(eot_delta_samples).mean(0))
         delta_star = torch.stack(wt_delta_samples).mean(0)
