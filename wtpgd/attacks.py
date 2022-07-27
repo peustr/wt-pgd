@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 DEFAULT_EOT_SAMPLES = 16
 DEFAULT_WT_SAMPLES = 16
-DEFAULT_WT_STD = 0.045
+DEFAULT_WT_STD = 0.05
 
 
 def wtpgd(
@@ -49,11 +49,14 @@ def wtpgd(
     for pgd_iter in range(num_iter):
         wt_grad_samples = []
         for wt_iter in range(num_wt_samples):
-            u = perturbed_data + torch.randn(
-                perturbed_data.shape,
-                dtype=perturbed_data.dtype,
-                device=perturbed_data.device
-            ) * wt_std
+            if wt_iter != 0:
+                u = perturbed_data + torch.randn(
+                    perturbed_data.shape,
+                    dtype=perturbed_data.dtype,
+                    device=perturbed_data.device
+                ) * wt_std
+            else:
+                u = perturbed_data
             eot_grad_samples = []
             for eot_iter in range(num_eot_samples):
                 if perturbed_data.grad is not None:
@@ -91,20 +94,25 @@ def fixed_point_wtpgd(
     """
     model.eval()
     perturbed_data = data.clone()
-    wt_loss_samples = []
+    wt_samples = []
     for wt_iter in range(num_wt_samples):
-        u = perturbed_data + torch.randn(
-            perturbed_data.shape,
-            dtype=perturbed_data.dtype,
-            device=perturbed_data.device
-        ) * wt_std
-        eot_loss_samples = []
-        for eot_iter in range(num_eot_samples):
-            output = model(u)
-            loss = F.cross_entropy(output, target).item()
-            eot_loss_samples.append(loss)
-        wt_loss_samples.append(np.mean(eot_loss_samples))
-    return np.mean(wt_loss_samples)
+        if wt_iter != 0:
+            u = perturbed_data + torch.randn(
+                perturbed_data.shape,
+                dtype=perturbed_data.dtype,
+                device=perturbed_data.device
+            ) * wt_std
+        else:
+            u = perturbed_data
+        wt_samples.append(u)
+        wt_samples.append(-u)
+    wt_samples = torch.cat(wt_samples, dim=0)
+    eot_loss_samples = []
+    for eot_iter in range(num_eot_samples):
+        output = model(wt_samples)
+        loss = F.cross_entropy(output, target.repeat(2 * num_wt_samples)).item()
+        eot_loss_samples.append(loss)
+    return np.mean(eot_loss_samples)
 
 
 def wtzoo(
@@ -159,11 +167,14 @@ def wtzoo(
         e[e < 1 - p] = 0.
         wt_delta_samples = []
         for wt_iter in range(num_wt_samples):
-            u = perturbed_data + torch.randn(
-                perturbed_data.shape,
-                dtype=perturbed_data.dtype,
-                device=perturbed_data.device
-            ) * wt_std
+            if wt_iter != 0:
+                u = perturbed_data + torch.randn(
+                    perturbed_data.shape,
+                    dtype=perturbed_data.dtype,
+                    device=perturbed_data.device
+                ) * wt_std
+            else:
+                u = perturbed_data
             eot_delta_samples = []
             for eot_iter in range(num_eot_samples):
                 f1 = hinge_loss(model, u + c * e, target, kappa=kappa)
