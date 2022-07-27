@@ -3,7 +3,7 @@ from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D  # noqa
 
 
-def create_figure(x, y, z, savefig=False):
+def create_figure(x, y, z, savefig_path=None):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.axes(projection='3d')
     ax.view_init(20, 160)
@@ -34,7 +34,7 @@ def create_figure(x, y, z, savefig=False):
     ax.zaxis.pane.set_edgecolor('black')
     ax.grid(False)
 
-    if savefig:
+    if savefig_path is not None:
         plt.tight_layout()
-        plt.savefig('loss-landscape.png')
+        plt.savefig(savefig_path)
     return fig, ax
