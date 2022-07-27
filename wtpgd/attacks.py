@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -13,9 +14,8 @@ def wtpgd(
     target,
     epsilon=8./255.,
     num_iter=10,
-    step_size=0.01,
-    d_min=0.,
-    d_max=1.,
+    step_size=0.1,
+    random_start=True,
     num_eot_samples=DEFAULT_EOT_SAMPLES,
     num_wt_samples=DEFAULT_WT_SAMPLES,
     wt_std=DEFAULT_WT_STD,
@@ -28,8 +28,8 @@ def wtpgd(
         epsilon: Attack strength.
         num_iter: Number of iterations.
         step_size: Learning rate.
-        d_min, d_max: Upper and lower pixel values for images (usually normalised
-            in [0, 1]).
+        random_start: Add uniform noise in [-epsilon, epsilon] before the
+            first PGD step.
         num_eot_samples: Number of EoT samples to deal with stochastic gradients.
             Only meaningful with stochastic defences, use 1 otherwise.
         num_wt_samples: Number of images to sample for the Weierstrass transform.
@@ -40,15 +40,12 @@ def wtpgd(
     perturbed_data.requires_grad = True
     data_min = data - epsilon
     data_max = data + epsilon
-    data_min.clamp_(d_min, d_max)
-    data_max.clamp_(d_min, d_max)
-    with torch.no_grad():
-        perturbed_data.data = data + torch.empty(
-            perturbed_data.shape,
-            dtype=perturbed_data.dtype,
-            device=perturbed_data.device
-        ).uniform_(-epsilon, epsilon)
-        perturbed_data.data.clamp_(d_min, d_max)
+    step_size = step_size * epsilon
+    if random_start:
+        with torch.no_grad():
+            perturbed_data.data += torch.empty_like(
+                perturbed_data.data).uniform_(-epsilon, epsilon)
+            perturbed_data.data.clamp_(data_min, data_max)
     for pgd_iter in range(num_iter):
         wt_grad_samples = []
         for wt_iter in range(num_wt_samples):
@@ -69,9 +66,45 @@ def wtpgd(
         grad_sign = torch.stack(wt_grad_samples).mean(0).sign()
         with torch.no_grad():
             perturbed_data.data += step_size * grad_sign
-            perturbed_data.data = torch.max(torch.min(perturbed_data, data_max), data_min)
+            perturbed_data.data.clamp_(data_min, data_max)
     perturbed_data.requires_grad = False
     return perturbed_data
+
+
+def fixed_point_wtpgd(
+    model,
+    data,
+    target,
+    num_eot_samples=DEFAULT_EOT_SAMPLES,
+    num_wt_samples=DEFAULT_WT_SAMPLES,
+    wt_std=DEFAULT_WT_STD,
+):
+    """
+    Params:
+        model: The model under attack.
+        data: A batch of images.
+        target: Class labels.
+        num_eot_samples: Number of EoT samples to deal with stochastic gradients.
+            Only meaningful with stochastic defences, use 1 otherwise.
+        num_wt_samples: Number of images to sample for the Weierstrass transform.
+        wt_std: The standard deviation of the Weierstrass transform sampling method.
+    """
+    model.eval()
+    perturbed_data = data.clone()
+    wt_loss_samples = []
+    for wt_iter in range(num_wt_samples):
+        u = perturbed_data + torch.randn(
+            perturbed_data.shape,
+            dtype=perturbed_data.dtype,
+            device=perturbed_data.device
+        ) * wt_std
+        eot_loss_samples = []
+        for eot_iter in range(num_eot_samples):
+            output = model(u)
+            loss = F.cross_entropy(output, target).item()
+            eot_loss_samples.append(loss)
+        wt_loss_samples.append(np.mean(eot_loss_samples))
+    return np.mean(wt_loss_samples)
 
 
 def wtzoo(
@@ -80,12 +113,10 @@ def wtzoo(
     target,
     epsilon=8./255.,
     num_iter=10,
-    step_size=0.01,
+    step_size=0.1,
     c=0.0001,
     p=0.05,
     kappa=0.,
-    d_min=0.,
-    d_max=1.,
     num_eot_samples=DEFAULT_EOT_SAMPLES,
     num_wt_samples=DEFAULT_WT_SAMPLES,
     wt_std=DEFAULT_WT_STD,
@@ -118,10 +149,10 @@ def wtzoo(
 
     model.eval()
     perturbed_data = data.clone()
+    perturbed_data.requires_grad = True
     data_min = data - epsilon
     data_max = data + epsilon
-    data_min.clamp_(d_min, d_max)
-    data_max.clamp_(d_min, d_max)
+    step_size = step_size * epsilon
     for zoo_iter in range(num_iter):
         e = torch.rand_like(perturbed_data)
         e[e >= 1 - p] = 1.
@@ -148,5 +179,5 @@ def wtzoo(
             wt_delta_samples.append(torch.stack(eot_delta_samples).mean(0))
         delta_star = torch.stack(wt_delta_samples).mean(0)
         perturbed_data.data += e * delta_star[:, None, None]
-        perturbed_data.data = torch.max(torch.min(perturbed_data, data_max), data_min)
+        perturbed_data.data.clamp_(data_min, data_max)
     return perturbed_data

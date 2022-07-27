@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from wtpgd.attacks import DEFAULT_EOT_SAMPLES, DEFAULT_WT_SAMPLES, DEFAULT_WT_STD, wtpgd
+from wtpgd.attacks import DEFAULT_EOT_SAMPLES, DEFAULT_WT_SAMPLES, DEFAULT_WT_STD, fixed_point_wtpgd
 
 
 def get_loss_landscape(
@@ -25,7 +25,7 @@ def get_loss_landscape(
         num_epsilons: Number of evenly-spaced images to sample in the epsilon-ball.
         num_eot_samples: EoT iterations for getting a more reliable axis gradient. Use 1 for
             non-stochastic defences.
-        use_wtpgd: Get the loss landscape when under attack by WTPGD.
+        use_wtpgd: Get the loss landscape when under attack by WT-PGD.
         wtpgd_args: Arguments for WTPGD, if use_wtpgd is True. Pass them in a dictionary
             format like: {num_eot_samples=?, num_wt_samples=?, wt_std=?}.
         gradient_axes: A tuple of (g1, g2), where g1 and g2 are orthogonal, to project the
@@ -58,18 +58,18 @@ def get_loss_landscape(
     epsilons = np.linspace(-epsilon, epsilon, num_epsilons)
     for e1 in epsilons:
         for e2 in epsilons:
+            u_ = data.reshape(1 * 3 * 32 * 32)
+            u_prime = (u_ + e1 * torch.sign(g1) + e2 * torch.sign(g2)).reshape(1, 3, 32, 32)
             if use_wtpgd:
-                u_prime = wtpgd(
-                    model, data, target, epsilon=epsilon,
+                loss = fixed_point_wtpgd(
+                    model, u_prime, target,
                     num_eot_samples=wtpgd_args.get('num_eot_samples', DEFAULT_EOT_SAMPLES),
                     num_wt_samples=wtpgd_args.get('num_wt_samples', DEFAULT_WT_SAMPLES),
                     wt_std=wtpgd_args.get('wt_std', DEFAULT_WT_STD),
                 )
             else:
-                u_ = data.reshape(1 * 3 * 32 * 32)
-                u_prime = (u_ + e1 * torch.sign(g1) + e2 * torch.sign(g2)).reshape(1, 3, 32, 32)
-            logits = model(u_prime)
-            loss = F.cross_entropy(logits, target)
+                logits = model(u_prime)
+                loss = F.cross_entropy(logits, target)
             x.append(e1)
             y.append(e2)
             z.append(loss.item())
