@@ -97,15 +97,15 @@ def fixed_point_wtpgd(
     wt_samples = []
     for wt_iter in range(num_wt_samples):
         if wt_iter != 0:
-            u = perturbed_data + torch.randn(
+            delta = torch.randn(
                 perturbed_data.shape,
                 dtype=perturbed_data.dtype,
                 device=perturbed_data.device
             ) * wt_std
         else:
-            u = perturbed_data
-        wt_samples.append(u)
-        wt_samples.append(-u)
+            delta = 0.
+        wt_samples.append(perturbed_data + delta)
+        wt_samples.append(perturbed_data - delta)
     wt_samples = torch.cat(wt_samples, dim=0)
     eot_loss_samples = []
     for eot_iter in range(num_eot_samples):
