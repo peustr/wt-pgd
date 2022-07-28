@@ -3,7 +3,7 @@ from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D  # noqa
 
 
-def create_figure(x, y, z, savefig_path=None):
+def create_figure(x, y, z, z_limits=None, savefig_path=None):
     fig = plt.figure(figsize=(10, 10))
     ax = plt.axes(projection='3d')
     ax.view_init(20, 160)
@@ -20,9 +20,14 @@ def create_figure(x, y, z, savefig_path=None):
     ax.set_yticklabels(["-ε", "-ε/2", 0, "ε/2", "ε"])
     ax.tick_params(axis='y', labelsize=18)
 
+    if z_limits is None:
+        z_min, z_max = 0, max(z)
+    else:
+        z_min, z_max = z_limits
+
     ax.set_zlabel('Loss', labelpad=0, rotation="vertical", fontsize=20)
-    ax.set_zlim(0, max(z))
-    ax.set_zticks([0, max(z)])
+    ax.set_zlim(z_min, z_max)
+    ax.set_zticks([z_min, z_max])
     ax.tick_params(axis='z', labelsize=18, pad=10)
 
     ax.plot_trisurf(x, y, z, cmap=cm.Purples, linewidth=0, antialiased=False, edgecolors='black')
